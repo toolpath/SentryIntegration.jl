@@ -334,8 +334,10 @@ function capture_message(message, level::String ; tags=nothing, attachments::Vec
 end
 
 # This assumes that we are calling from within a catch
-capture_exception(exc::Exception) = capture_exception([(exc, catch_backtrace())])
-function capture_exception(exceptions=catch_stack())
+function capture_exception(exc::Exception; tags=nothing)
+    capture_exception([(exc, catch_backtrace())]; tags)
+end
+function capture_exception(exceptions=catch_stack(); tags=nothing)
     main_hub.initialised || return
 
     formatted_excs = map(exceptions) do (exc,strace)
@@ -352,8 +354,10 @@ function capture_exception(exceptions=catch_stack())
          :value => hasproperty(exc, :msg) ? exc.msg : sprint(showerror, exc),
          :stacktrace => (;frames=reverse(frames)))
     end
-    capture_event(Event(exception=(;values=formatted_excs),
-                        level="error"))
+    capture_event(Event(;
+                        exception=(;values=formatted_excs),
+                        level="error",
+                        tags))
 end
 
 
