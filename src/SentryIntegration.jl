@@ -276,26 +276,27 @@ function send_envelope(task::TaskPayload)
     if r.status == 429
         # TODO
         @warn "Sentry: Too Many Requests"
-    elseif r.status !== 200
+    elseif r.status != 200
         # TODO
-        error("Received error status = $(r.status)")
+        @warn "Received error status = $(r.status)"
     end
     nothing
 end
 
 function send_worker()
     while true
+        event = take!(main_hub.queued_tasks)
+        main_hub.sending_tasks[event.event_id] = event
+        yield()
         try
-            event = take!(main_hub.queued_tasks)
-            main_hub.sending_tasks[event.event_id] = event
-            yield()
             send_envelope(event)
-            delete!(main_hub.sending_tasks, event.event_id)
-        catch exc
+        catch ex
             if main_hub.debug
-                @error "Sentry error"
-                showerror(stderr, exc, catch_backtrace())
+                @error "Error sending Sentry event"
+                showerror(stderr, ex, catch_backtrace())
             end
+        finally
+            delete!(main_hub.sending_tasks, event.event_id)
         end
     end
 end
