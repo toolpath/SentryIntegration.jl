@@ -71,5 +71,6 @@ const TaskPayload = Union{Event,Transaction}
 
     last_send_time = nothing
     queued_tasks = Channel{TaskPayload}(100)
+    sending_tasks::Dict{String, TaskPayload} = Dict()
     sender_task = nothing
 end

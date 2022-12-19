@@ -254,27 +254,31 @@ function send_envelope(task::TaskPayload)
     body = read(stream)
     close(stream)
 
-    if main_hub.debug
-        @info "Sending HTTP request" typeof(task)
-    end
-    if main_hub.dsn === "fake"
+    if main_hub.dsn == "fake"
         body = String(transcode(CodecZlib.GzipDecompressor, body))
         lines = map(eachline(IOBuffer(body))) do line
             line = JSON.Parser.parse(line)
             line = JSON.json(line, 4)
         end
-        @info "Would have sent this body"
+        @info "Would have sent event $(task.event_id)"
         foreach(println, lines)
+        sleep(0.5)
         return
     end
+
+    if main_hub.debug
+        @info "Sending HTTP request for $(typeof(task))..."
+    end
     r = HTTP.request("POST", target, headers, body)
+    if main_hub.debug
+        @info "Received response for $(typeof(task)); status = $(r.status)"
+    end
     if r.status == 429
-        # TODO:
-    elseif r.status == 200
-        # TODO:
-        r.body
-    else
-        error("Unknown status $(r.status)")
+        # TODO
+        @warn "Sentry: Too Many Requests"
+    elseif r.status !== 200
+        # TODO
+        error("Received error status = $(r.status)")
     end
     nothing
 end
@@ -283,8 +287,10 @@ function send_worker()
     while true
         try
             event = take!(main_hub.queued_tasks)
+            main_hub.sending_tasks[event.event_id] = event
             yield()
             send_envelope(event)
+            delete!(main_hub.sending_tasks, event.event_id)
         catch exc
             if main_hub.debug
                 @error "Sentry error"
@@ -295,10 +301,9 @@ function send_worker()
 end
 
 function clear_queue()
-    while isready(main_hub.queued_tasks)
+    while isready(main_hub.queued_tasks) || !isempty(main_hub.sending_tasks)
         @info "Waiting for queue to finish before closing"
-        # send_envelope(take!(main_hub.queued_tasks))
-        sleep(1)
+        sleep(1.0)
     end
 end
 
@@ -312,7 +317,7 @@ end
 function capture_event(task::TaskPayload)
     main_hub.initialised || return
 
-    push!(main_hub.queued_tasks, task)
+    put!(main_hub.queued_tasks, task)
 end
 
 function capture_message(message, level::LogLevel=Info ; kwds...)
