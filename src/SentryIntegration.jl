@@ -137,38 +137,41 @@ function merge_tags(args...)
 end
 
 function prepare_body(event::Event, buf)
-    envelope_header = (; event.event_id,
-                       sent_at = nowstr(),
-                       dsn = main_hub.dsn
-                       )
+    envelope_header = (;
+        event.event_id,
+        sent_at = nowstr(),
+        dsn = main_hub.dsn
+    )
 
     item = (;
-            event.timestamp,
-            event.platform,
-            server_name = gethostname(),
-            event.exception,
-            event.message,
-            event.level,
-            main_hub.release,
-            tags = merge_tags(global_tags, event.tags),
-            ) |> filter_nothings
+        event.timestamp,
+        platform = "julia",
+        server_name = gethostname(),
+        event.exception,
+        event.message,
+        event.level,
+        main_hub.release,
+        tags = merge_tags(global_tags, event.tags),
+    ) |> filter_nothings
+
     item_str = JSON.json(item)
-
-    item_header = (; type="event",
-                   content_type="application/json",
-                   length=sizeof(item_str))
-
+    item_header = (;
+        type = "event",
+        content_type = "application/json",
+        length = sizeof(item_str),
+    )
 
     println(buf, JSON.json(envelope_header))
     println(buf, JSON.json(item_header))
     println(buf, item_str)
 
     for attachment in event.attachments
-        attachment_str = JSON.json((;data=attachment))
-        attachment_header = (; type="attachment",
-                             length=sizeof(attachment_str),
-                             content_type="application/json")
-
+        attachment_str = JSON.json((; data=attachment))
+        attachment_header = (;
+            type = "attachment",
+            length = sizeof(attachment_str),
+            content_type = "application/json",
+        )
         println(buf, JSON.json(attachment_header))
         println(buf, attachment_str)
     end
@@ -177,10 +180,11 @@ function prepare_body(event::Event, buf)
 end
 
 function prepare_body(transaction::Transaction, buf)
-    envelope_header = (; transaction.event_id,
-                       sent_at = nowstr(),
-                       dsn = main_hub.dsn
-                       )
+    envelope_header = (;
+        transaction.event_id,
+        sent_at = nowstr(),
+        dsn = main_hub.dsn,
+    )
 
     if main_hub.debug && any(span -> isnothing(span.timestamp), transaction.spans)
         @warn "At least one span didn't complete before the transaction completed"
@@ -188,45 +192,50 @@ function prepare_body(transaction::Transaction, buf)
 
     spans = map(transaction.spans) do span
         (;
-         transaction.trace_id,
-         span.parent_span_id,
-         span.span_id,
-         span.tags,
-         span.op,
-         span.description,
-         span.start_timestamp,
-         span.timestamp)
+            transaction.trace_id,
+            span.parent_span_id,
+            span.span_id,
+            span.tags,
+            span.op,
+            span.description,
+            span.start_timestamp,
+            span.timestamp,
+            span.status,
+        )
     end
 
     root_span = transaction.root_span
 
     trace = (;
-             transaction.trace_id,
-             root_span.op,
-             root_span.description,
-             root_span.tags,
-             root_span.span_id,
-             root_span.parent_span_id,
-            ) |> filter_nothings
+        transaction.trace_id,
+        root_span.op,
+        root_span.description,
+        root_span.tags,
+        root_span.span_id,
+        root_span.parent_span_id,
+        root_span.status,
+    ) |> filter_nothings
 
-    item = (; type="transaction",
-            platform = "julia",
-            server_name = gethostname(),
-            transaction.event_id,
-            transaction = transaction.name,
-            # root_span...,
-            root_span.start_timestamp,
-            root_span.timestamp,
-            tags = merge_tags(global_tags, root_span.tags),
+    item = (;
+        type = "transaction",
+        platform = "julia",
+        server_name = gethostname(),
+        transaction.event_id,
+        transaction = transaction.name,
+        # root_span...,
+        root_span.start_timestamp,
+        root_span.timestamp,
+        tags = merge_tags(global_tags, root_span.tags),
+        contexts = (; trace),
+        spans = filter_nothings.(spans),
+    ) |> filter_nothings
 
-            contexts = (; trace),
-            spans = filter_nothings.(spans),
-            ) |> filter_nothings
     item_str = JSON.json(item)
-
-    item_header = (; type="transaction",
-                   content_type="application/json",
-                   length=sizeof(item_str)+1) # +1 for the newline to come
+    item_header = (;
+        type = "transaction",
+        content_type = "application/json",
+        length = sizeof(item_str), # TODO verify: # +1 for the newline to come
+    )
 
     println(buf, JSON.json(envelope_header))
     println(buf, JSON.json(item_header))
@@ -238,11 +247,12 @@ end
 function send_envelope(task::TaskPayload)
     target = "$(main_hub.upstream)/api/$(main_hub.project_id)/envelope/"
 
-    headers = ["Content-Type" => "application/x-sentry-envelope",
-               "content-encoding" => "gzip",
-               "User-Agent" => "SentryIntegration.jl/$VERSION",
-               "X-Sentry-Auth" => "Sentry sentry_version=7, sentry_client=SentryIntegration.jl/$VERSION, sentry_timestamp=$(nowstr()), sentry_key=$(main_hub.public_key)"
-               ]
+    headers = [
+        "Content-Type" => "application/x-sentry-envelope",
+        "content-encoding" => "gzip",
+        "User-Agent" => "SentryIntegration.jl/$VERSION",
+        "X-Sentry-Auth" => "Sentry sentry_version=7, sentry_client=SentryIntegration.jl/$VERSION, sentry_timestamp=$(nowstr()), sentry_key=$(main_hub.public_key)",
+    ]
 
     buf = PipeBuffer()
     stream = CodecZlib.GzipCompressorStream(buf)
@@ -328,10 +338,11 @@ function capture_message(message, level::String ; tags=nothing, attachments::Vec
     main_hub.initialised || return
 
     capture_event(Event(;
-                        message=(; formatted=message),
-                        level,
-                        attachments,
-                        tags))
+        message = (; formatted=message),
+        level,
+        attachments,
+        tags,
+    ))
 end
 
 # This assumes that we are calling from within a catch
@@ -346,20 +357,25 @@ function capture_exception(exceptions=catch_stack(); tags=nothing)
         bt = Base.scrub_repl_backtrace(strace)
         # frames = map(Base.stacktrace(strace, false)) do frame
         frames = map(bt) do frame
-            Dict(:filename => frame.file,
-             :function => frame.func,
-             :lineno => frame.line)
+            Dict(
+                :filename => frame.file,
+                :function => frame.func,
+                :lineno => frame.line,
+            )
         end
 
-        Dict(:type => typeof(exc).name.name,
-         :module => string(typeof(exc).name.module),
-         :value => hasproperty(exc, :msg) ? exc.msg : sprint(showerror, exc),
-         :stacktrace => (;frames=reverse(frames)))
+        Dict(
+            :type => typeof(exc).name.name,
+            :module => string(typeof(exc).name.module),
+            :value => hasproperty(exc, :msg) ? exc.msg : sprint(showerror, exc),
+            :stacktrace => (; frames=reverse(frames)),
+        )
     end
     capture_event(Event(;
-                        exception=(;values=formatted_excs),
-                        level="error",
-                        tags))
+        exception = (; values=formatted_excs),
+        level = "error",
+        tags,
+    ))
 end
 
 

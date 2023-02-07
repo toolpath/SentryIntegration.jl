@@ -10,13 +10,15 @@ function start_transaction(func; kwds...)
 
     try
         return func(t)
+    catch
+        t.span.status = "internal_error"
+        rethrow()
     finally
         finish_transaction(t, previous)
     end
 end
 
-function start_transaction(; name="", force_new=(name!=""), trace_id=:auto, span_kwds...)
-    # trace_id === nothing && return nothing
+function start_transaction(; name="", force_new=!isempty(name), trace_id=:auto, span_kwds...)
     # Need to pass through nothings so that we can hit an InhibitTransaction
     t = get_transaction(; name, trace_id, force_new)
     if isnothing(t) || t isa InhibitTransaction
@@ -36,15 +38,18 @@ function start_transaction(; name="", force_new=(name!=""), trace_id=:auto, span
     (; transaction, parent_span, span)
 end
 
-function finish_transaction(current, previous)
-    finish_transaction(current)
+function finish_transaction(current, previous; status=nothing)
+    finish_transaction(current; status)
     task_local_storage(:sentry_transaction, previous)
 end
 
 finish_transaction(::Nothing) = nothing
 finish_transaction(::InhibitTransaction) = nothing
 
-function finish_transaction((transaction, parent_span, span))
+function finish_transaction((transaction, parent_span, span); status=nothing)
+    if !isnothing(status)
+        span.status = status
+    end
     complete(span)
     if transaction.root_span !== span
         push!(transaction.spans, span)
@@ -62,15 +67,14 @@ function get_transaction(; force_new=false, trace_id=:auto, kwds...)
 
     if force_new
         task_local_storage(:sentry_transaction, nothing)
-        transaction = nothing
-    else
-        transaction = get(task_local_storage(), :sentry_transaction, nothing)
     end
 
-    if transaction === InhibitTransaction()
+    transaction = get(task_local_storage(), :sentry_transaction, nothing)
+
+    if transaction isa InhibitTransaction
         return transaction
-    elseif transaction === nothing
-        if trace_id === nothing
+    elseif isnothing(transaction)
+        if isnothing(trace_id)
             transaction = InhibitTransaction()
             task_local_storage(:sentry_transaction, transaction)
             return transaction

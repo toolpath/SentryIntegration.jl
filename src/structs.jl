@@ -5,7 +5,6 @@
 Base.@kwdef struct Event
     event_id::String = generate_uuid4()
     timestamp::String = nowstr()
-    platform::String = "julia"
     message::Union{Nothing, NamedTuple} = nothing
     exception::Union{Nothing, NamedTuple} = nothing
     level::String
@@ -22,6 +21,7 @@ Base.@kwdef mutable struct Span
     description::Union{Nothing, String} = nothing
     start_timestamp::String = nowstr()
     timestamp::Union{Nothing, String} = nothing
+    status::String = "ok"
 end
 
 Base.@kwdef mutable struct Transaction
