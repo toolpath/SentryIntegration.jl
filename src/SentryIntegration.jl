@@ -1,6 +1,5 @@
 module SentryIntegration
 
-using AutoParameters
 using Logging: Info, Warn, Error, LogLevel
 using UUIDs
 using Dates
@@ -48,7 +47,6 @@ function init(dsn=nothing ; traces_sample_rate=nothing, traces_sampler=nothing, 
         atexit(clear_queue)
     end
 
-
     main_hub.debug = debug
     main_hub.dsn = dsn
 
@@ -72,7 +70,6 @@ function init(dsn=nothing ; traces_sample_rate=nothing, traces_sampler=nothing, 
     bind(main_hub.queued_tasks, main_hub.sender_task)
     main_hub.initialised = true
 
-    # TODO: Return something?
     nothing
 end
 
@@ -313,8 +310,6 @@ end
 # * Basic capturing
 #----------------------------------
 
-
-
 function capture_event(task::TaskPayload)
     main_hub.initialised || return
 
@@ -329,6 +324,7 @@ function capture_message(message, level::LogLevel=Info ; kwds...)
     end
     capture_message(message, level_str ; kwds...)
 end
+
 function capture_message(message, level::String ; tags=nothing, attachments::Vector=[])
     main_hub.initialised || return
 
@@ -343,6 +339,7 @@ end
 function capture_exception(exc::Exception; tags=nothing)
     capture_exception([(exc, catch_backtrace())]; tags)
 end
+
 function capture_exception(exceptions=catch_stack(); tags=nothing)
     main_hub.initialised || return
 

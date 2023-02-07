@@ -1,11 +1,10 @@
-
 ##############################
 # * Transactions
 #----------------------------
 
 struct InhibitTransaction end
 
-function start_transaction(func ; kwds...)
+function start_transaction(func; kwds...)
     previous = get(task_local_storage(), :sentry_transaction, nothing)
     t = start_transaction(; kwds...)
 
@@ -44,8 +43,10 @@ function finish_transaction(current, previous)
     finish_transaction(current)
     task_local_storage(:sentry_transaction, previous)
 end
+
 finish_transaction(::Nothing) = nothing
 finish_transaction(::InhibitTransaction) = nothing
+
 function finish_transaction((transaction, parent_span, span))
     complete(span)
     if transaction.root_span !== span
@@ -57,7 +58,6 @@ function finish_transaction((transaction, parent_span, span))
         complete(transaction)
     end
 end
-
 
 
 function get_transaction(; force_new=false, trace_id=:auto, kwds...)
@@ -104,10 +104,13 @@ function get_transaction(; force_new=false, trace_id=:auto, kwds...)
     end
 end
 
+
 set_task_transaction(::Nothing) = nothing
+
 function set_task_transaction(::InhibitTransaction)
     task_local_storage(:sentry_transaction, InhibitTransaction())
 end
+
 function set_task_transaction((transaction, ignored, parent_span))
     task_local_storage(:sentry_transaction, transaction)
     task_local_storage(:sentry_parent_span, parent_span)
