@@ -34,9 +34,9 @@ const global_tags = Dict{String,String}()
 
 function init(dsn=nothing ; traces_sample_rate=nothing, traces_sampler=nothing, debug=false, release=nothing)
     main_hub.initialised && @warn "Sentry already initialised."
-    if dsn === nothing
+    if isnothing(dsn)
         dsn = get(ENV, "SENTRY_DSN", nothing)
-        if dsn === nothing
+        if isnothing(dsn)
             # Abort - pretend nothing happened
             @warn "No DSN for SentryIntegration"
             return
@@ -57,10 +57,10 @@ function init(dsn=nothing ; traces_sample_rate=nothing, traces_sampler=nothing, 
 
     main_hub.release = release
 
-    @assert traces_sample_rate === nothing || traces_sampler === nothing
-    if traces_sample_rate !== nothing
+    @assert isnothing(traces_sample_rate) || isnothing(traces_sampler)
+    if !isnothing(traces_sample_rate)
         main_hub.traces_sampler = RatioSampler(traces_sample_rate)
-    elseif traces_sampler !== nothing
+    elseif !isnothing(traces_sampler)
         main_hub.traces_sampler = traces_sampler
     else
         main_hub.traces_sampler = NoSamples()
@@ -77,7 +77,7 @@ function parse_dsn(dsn)
     dsn == "fake" && return (; upstream="", project_id="", public_key="")
 
     m = match(r"(?'protocol'\w+)://(?'public_key'\w+)@(?'hostname'[\w\.]+(?::\d+)?)/(?'project_id'\w+)"a, dsn)
-    m === nothing && error("dsn does not fit correct format")
+    isnothing(m) && error("dsn does not fit correct format")
 
     upstream = "$(m[:protocol])://$(m[:hostname])"
 
@@ -126,8 +126,9 @@ function generate_uuid4()
     lpad(s, 32, '0')
 end
 
-FilterNothings(thing) = filter(x -> x.second !== nothing, pairs(thing))
-function MergeTags(args...)
+filter_nothings(thing) = filter(x -> !isnothing(x.second), pairs(thing))
+
+function merge_tags(args...)
     args = filter(!=(nothing), args)
     isempty(args) && return nothing
     out = merge(pairs.(args)...)
@@ -135,7 +136,7 @@ function MergeTags(args...)
     out
 end
 
-function PrepareBody(event::Event, buf)
+function prepare_body(event::Event, buf)
     envelope_header = (; event.event_id,
                        sent_at = nowstr(),
                        dsn = main_hub.dsn
@@ -149,8 +150,8 @@ function PrepareBody(event::Event, buf)
             event.message,
             event.level,
             main_hub.release,
-            tags = MergeTags(global_tags, event.tags),
-            ) |> FilterNothings
+            tags = merge_tags(global_tags, event.tags),
+            ) |> filter_nothings
     item_str = JSON.json(item)
 
     item_header = (; type="event",
@@ -172,16 +173,16 @@ function PrepareBody(event::Event, buf)
         println(buf, attachment_str)
     end
 
-
     nothing
 end
-function PrepareBody(transaction::Transaction, buf)
+
+function prepare_body(transaction::Transaction, buf)
     envelope_header = (; transaction.event_id,
                        sent_at = nowstr(),
                        dsn = main_hub.dsn
                        )
 
-    if main_hub.debug && any(span -> span.timestamp === nothing, transaction.spans)
+    if main_hub.debug && any(span -> isnothing(span.timestamp), transaction.spans)
         @warn "At least one span didn't complete before the transaction completed"
     end
 
@@ -196,8 +197,7 @@ function PrepareBody(transaction::Transaction, buf)
          span.start_timestamp,
          span.timestamp)
     end
-    #root_span = popfirst!(spans)
-    # root_span = pop!(spans)
+
     root_span = transaction.root_span
 
     trace = (;
@@ -207,7 +207,7 @@ function PrepareBody(transaction::Transaction, buf)
              root_span.tags,
              root_span.span_id,
              root_span.parent_span_id,
-            ) |> FilterNothings
+            ) |> filter_nothings
 
     item = (; type="transaction",
             platform = "julia",
@@ -217,17 +217,16 @@ function PrepareBody(transaction::Transaction, buf)
             # root_span...,
             root_span.start_timestamp,
             root_span.timestamp,
-            tags = MergeTags(global_tags, root_span.tags),
+            tags = merge_tags(global_tags, root_span.tags),
 
             contexts = (; trace),
-            spans = FilterNothings.(spans),
-            ) |> FilterNothings
+            spans = filter_nothings.(spans),
+            ) |> filter_nothings
     item_str = JSON.json(item)
 
     item_header = (; type="transaction",
                    content_type="application/json",
                    length=sizeof(item_str)+1) # +1 for the newline to come
-
 
     println(buf, JSON.json(envelope_header))
     println(buf, JSON.json(item_header))
@@ -247,7 +246,7 @@ function send_envelope(task::TaskPayload)
 
     buf = PipeBuffer()
     stream = CodecZlib.GzipCompressorStream(buf)
-    PrepareBody(task, buf)
+    prepare_body(task, buf)
     body = read(stream)
     close(stream)
 

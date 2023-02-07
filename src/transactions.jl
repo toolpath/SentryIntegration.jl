@@ -15,23 +15,20 @@ function start_transaction(func; kwds...)
     end
 end
 
-function start_transaction(; name="", force_new=(name!=""), trace_id=:auto, parent_span_id=nothing, span_kwds...)
+function start_transaction(; name="", force_new=(name!=""), trace_id=:auto, span_kwds...)
     # trace_id === nothing && return nothing
     # Need to pass through nothings so that we can hit an InhibitTransaction
     t = get_transaction(; name, trace_id, force_new)
-    if t === nothing || t === InhibitTransaction()
+    if isnothing(t) || t isa InhibitTransaction
         return t
     end
 
-    transaction, parent_span = t
+    (; transaction, parent_span) = t
 
-    if parent_span !== nothing
-        parent_span_id = parent_span.span_id
-    end
-
-    span = Span(; parent_span_id=parent_span_id, span_kwds...)
+    parent_span_id = !isnothing(parent_span) ? parent_span.span_id : nothing
+    span = Span(; parent_span_id, span_kwds...)
     task_local_storage(:sentry_parent_span, span)
-    if transaction.root_span === nothing
+    if isnothing(transaction.root_span)
         transaction.root_span = span
     end
     transaction.num_open_spans += 1
@@ -125,7 +122,7 @@ function complete(transaction::Transaction)
 end
 
 function complete(span::Span)
-    if span.timestamp !== nothing
+    if !isnothing(span.timestamp)
         main_hub.debug && @warn "Span attempted to be completed twice"
     else
         span.timestamp = nowstr()
