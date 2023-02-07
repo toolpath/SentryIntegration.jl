@@ -2,17 +2,6 @@
 # * Support structs
 #----------------------------
 
-Base.@kwdef struct Event
-    event_id::String = generate_uuid4()
-    timestamp::String = nowstr()
-    message::Union{Nothing, NamedTuple} = nothing
-    exception::Union{Nothing, NamedTuple} = nothing
-    level::String
-    tags::Union{Nothing, Dict{String, String}} = nothing
-    attachments::Vector{Any} = []
-end
-
-
 Base.@kwdef mutable struct Span
     span_id::String = generate_uuid4()[1:16]
     parent_span_id::Union{Nothing, String} = nothing
@@ -33,6 +22,18 @@ Base.@kwdef mutable struct Transaction
     num_open_spans::Int = 0
 end
 
+Base.@kwdef struct Event
+    event_id::String = generate_uuid4()
+    timestamp::String = nowstr()
+    message::Union{Nothing, NamedTuple} = nothing
+    exception::Union{Nothing, NamedTuple} = nothing
+    level::String
+    tags::Union{Nothing, Dict{String, String}} = nothing
+    attachments::Vector{Any} = []
+    transaction::Union{Nothing, Transaction} = nothing
+end
+
+
 ##############################
 # * Hub
 #----------------------------
@@ -52,7 +53,7 @@ sample(::NoSamples) = false
 sample(sampler::RatioSampler) = rand() < sampler.ratio
 sample(sampler::Function) = sampler()
 
-const TaskPayload = Union{Event,Transaction}
+const TaskPayload = Union{Event, Transaction}
 
 # This is to supposedly support the "unified api" of the sentry sdk. I'm not a
 # fan, so it will only go partway to this goal.
@@ -67,7 +68,6 @@ Base.@kwdef mutable struct Hub
     public_key::String = ""
 
     release::Union{Nothing, String} = nothing
-
     debug::Bool = false
 
     # last_send_time::Union{Nothing, String} = nothing

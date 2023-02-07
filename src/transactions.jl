@@ -8,13 +8,17 @@ function start_transaction(func; kwds...)
     previous = get(task_local_storage(), :sentry_transaction, nothing)
     t = start_transaction(; kwds...)
 
+    status = nothing
     try
         return func(t)
-    catch
-        t.span.status = "internal_error"
+    catch exc
+        status = "internal_error"
+        if isnothing(t.parent_span)
+            capture_exception(exc; t.transaction)
+        end
         rethrow()
     finally
-        finish_transaction(t, previous)
+        finish_transaction(t, previous; status)
     end
 end
 

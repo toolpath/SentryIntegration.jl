@@ -136,12 +136,31 @@ function merge_tags(args...)
     out
 end
 
+function trace_context(transaction::Transaction)
+    root_span = transaction.root_span
+    (;
+        transaction.trace_id,
+        root_span.op,
+        root_span.description,
+        root_span.span_id,
+        root_span.parent_span_id,
+        root_span.status,
+    ) |> filter_nothings
+end
+
 function prepare_body(event::Event, buf)
     envelope_header = (;
         event.event_id,
         sent_at = nowstr(),
         dsn = main_hub.dsn
     )
+
+    transaction, transaction_tags, trace = if isnothing(event.transaction)
+        nothing, nothing, nothing
+    else
+        (; transaction) = event
+        transaction.name, transaction.root_span.tags, trace_context(transaction)
+    end
 
     item = (;
         event.timestamp,
@@ -150,8 +169,10 @@ function prepare_body(event::Event, buf)
         event.exception,
         event.message,
         event.level,
+        transaction,
         main_hub.release,
-        tags = merge_tags(global_tags, event.tags),
+        tags = merge_tags(global_tags, event.tags, transaction_tags),
+        contexts = (; trace) |> filter_nothings,
     ) |> filter_nothings
 
     item_str = JSON.json(item)
@@ -201,20 +222,10 @@ function prepare_body(transaction::Transaction, buf)
             span.start_timestamp,
             span.timestamp,
             span.status,
-        )
+        ) |> filter_nothings
     end
 
     root_span = transaction.root_span
-
-    trace = (;
-        transaction.trace_id,
-        root_span.op,
-        root_span.description,
-        root_span.tags,
-        root_span.span_id,
-        root_span.parent_span_id,
-        root_span.status,
-    ) |> filter_nothings
 
     item = (;
         type = "transaction",
@@ -226,15 +237,15 @@ function prepare_body(transaction::Transaction, buf)
         root_span.start_timestamp,
         root_span.timestamp,
         tags = merge_tags(global_tags, root_span.tags),
-        contexts = (; trace),
-        spans = filter_nothings.(spans),
+        contexts = (; trace = trace_context(transaction)),
+        spans,
     ) |> filter_nothings
 
     item_str = JSON.json(item)
     item_header = (;
         type = "transaction",
         content_type = "application/json",
-        length = sizeof(item_str), # TODO verify: # +1 for the newline to come
+        length = sizeof(item_str),
     )
 
     println(buf, JSON.json(envelope_header))
@@ -346,16 +357,15 @@ function capture_message(message, level::String ; tags=nothing, attachments::Vec
 end
 
 # This assumes that we are calling from within a catch
-function capture_exception(exc::Exception; tags=nothing)
-    capture_exception([(exc, catch_backtrace())]; tags)
+function capture_exception(exc::Exception; tags=nothing, transaction=nothing)
+    capture_exception([(exc, catch_backtrace())]; tags, transaction)
 end
 
-function capture_exception(exceptions=catch_stack(); tags=nothing)
+function capture_exception(exceptions=current_exceptions(); tags=nothing, transaction=nothing)
     main_hub.initialised || return
 
-    formatted_excs = map(exceptions) do (exc,strace)
+    formatted_excs = map(exceptions) do (exc, strace)
         bt = Base.scrub_repl_backtrace(strace)
-        # frames = map(Base.stacktrace(strace, false)) do frame
         frames = map(bt) do frame
             Dict(
                 :filename => frame.file,
@@ -375,6 +385,7 @@ function capture_exception(exceptions=catch_stack(); tags=nothing)
         exception = (; values=formatted_excs),
         level = "error",
         tags,
+        transaction,
     ))
 end
 
