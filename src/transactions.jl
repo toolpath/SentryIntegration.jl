@@ -1,38 +1,42 @@
-
 ##############################
 # * Transactions
 #----------------------------
 
 struct InhibitTransaction end
 
-function start_transaction(func ; kwds...)
+function start_transaction(func; kwds...)
     previous = get(task_local_storage(), :sentry_transaction, nothing)
     t = start_transaction(; kwds...)
 
+    status = nothing
     try
         return func(t)
+    catch exc
+        status = "internal_error"
+        if !(isnothing(t) || t isa InhibitTransaction) # equivalently: t isa NamedTuple
+            if isnothing(t.parent_span) # equivalently: t.span == t.transaction.root_span
+                capture_exception(exc; t.transaction)
+            end
+        end
+        rethrow()
     finally
-        finish_transaction(t, previous)
+        finish_transaction(t, previous; status)
     end
 end
 
-function start_transaction(; name="", force_new=(name!=""), trace_id=:auto, parent_span_id=nothing, span_kwds...)
-    # trace_id === nothing && return nothing
+function start_transaction(; name="", force_new=!isempty(name), trace_id=:auto, span_kwds...)
     # Need to pass through nothings so that we can hit an InhibitTransaction
     t = get_transaction(; name, trace_id, force_new)
-    if t === nothing || t === InhibitTransaction()
+    if isnothing(t) || t isa InhibitTransaction
         return t
     end
 
-    transaction, parent_span = t
+    (; transaction, parent_span) = t
 
-    if parent_span !== nothing
-        parent_span_id = parent_span.span_id
-    end
-
-    span = Span(; parent_span_id=parent_span_id, span_kwds...)
+    parent_span_id = !isnothing(parent_span) ? parent_span.span_id : nothing
+    span = Span(; parent_span_id, span_kwds...)
     task_local_storage(:sentry_parent_span, span)
-    if transaction.root_span === nothing
+    if isnothing(transaction.root_span)
         transaction.root_span = span
     end
     transaction.num_open_spans += 1
@@ -40,13 +44,19 @@ function start_transaction(; name="", force_new=(name!=""), trace_id=:auto, pare
     (; transaction, parent_span, span)
 end
 
-function finish_transaction(current, previous)
-    finish_transaction(current)
+function finish_transaction(current, previous; status=nothing)
+    finish_transaction(current; status)
     task_local_storage(:sentry_transaction, previous)
+    nothing
 end
-finish_transaction(::Nothing) = nothing
-finish_transaction(::InhibitTransaction) = nothing
-function finish_transaction((transaction, parent_span, span))
+
+finish_transaction(::Nothing; _...) = nothing
+finish_transaction(::InhibitTransaction; _...) = nothing
+
+function finish_transaction((; transaction, parent_span, span)::NamedTuple; status=nothing)
+    if !isnothing(status)
+        span.status = status
+    end
     complete(span)
     if transaction.root_span !== span
         push!(transaction.spans, span)
@@ -56,8 +66,8 @@ function finish_transaction((transaction, parent_span, span))
     if transaction.num_open_spans == 0
         complete(transaction)
     end
+    nothing
 end
-
 
 
 function get_transaction(; force_new=false, trace_id=:auto, kwds...)
@@ -65,15 +75,14 @@ function get_transaction(; force_new=false, trace_id=:auto, kwds...)
 
     if force_new
         task_local_storage(:sentry_transaction, nothing)
-        transaction = nothing
-    else
-        transaction = get(task_local_storage(), :sentry_transaction, nothing)
     end
 
-    if transaction === InhibitTransaction()
+    transaction = get(task_local_storage(), :sentry_transaction, nothing)
+
+    if transaction isa InhibitTransaction
         return transaction
-    elseif transaction === nothing
-        if trace_id === nothing
+    elseif isnothing(transaction)
+        if isnothing(trace_id)
             transaction = InhibitTransaction()
             task_local_storage(:sentry_transaction, transaction)
             return transaction
@@ -104,10 +113,13 @@ function get_transaction(; force_new=false, trace_id=:auto, kwds...)
     end
 end
 
+
 set_task_transaction(::Nothing) = nothing
+
 function set_task_transaction(::InhibitTransaction)
     task_local_storage(:sentry_transaction, InhibitTransaction())
 end
+
 function set_task_transaction((transaction, ignored, parent_span))
     task_local_storage(:sentry_transaction, transaction)
     task_local_storage(:sentry_parent_span, parent_span)
@@ -122,7 +134,7 @@ function complete(transaction::Transaction)
 end
 
 function complete(span::Span)
-    if span.timestamp !== nothing
+    if !isnothing(span.timestamp)
         main_hub.debug && @warn "Span attempted to be completed twice"
     else
         span.timestamp = nowstr()

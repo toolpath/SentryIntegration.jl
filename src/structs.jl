@@ -2,44 +2,44 @@
 # * Support structs
 #----------------------------
 
-@AutoParm struct Event
-    event_id = generate_uuid4()
-    timestamp = nowstr()
-    platform = "julia"
-
-    message = nothing
-    exception = nothing
-    level = nothing
-    tags = nothing
-    attachments::Vector{Any} = []
-end
-
-
-@AutoParm mutable struct Span
-    parent_span_id::Union{String,Nothing} = nothing
+Base.@kwdef mutable struct Span
     span_id::String = generate_uuid4()[1:16]
-    tags = nothing
-    op = nothing
-    description = nothing
+    parent_span_id::Union{Nothing, String} = nothing
+    tags::Union{Nothing, Dict{String, String}} = nothing
+    op::Union{Nothing, String} = nothing
+    description::Union{Nothing, String} = nothing
     start_timestamp::String = nowstr()
-    timestamp::Union{Nothing,String} = nothing
+    timestamp::Union{Nothing, String} = nothing
+    status::String = "ok"
 end
 
-@AutoParm mutable struct Transaction
+Base.@kwdef mutable struct Transaction
     event_id::String = generate_uuid4()
+    trace_id::String
     name::String
-    trace_id::String = generate_uuid4()
-
     spans::Vector{Span} = []
-    root_span::Union{Span,Nothing} = nothing
+    root_span::Union{Nothing, Span} = nothing
     num_open_spans::Int = 0
 end
+
+Base.@kwdef struct Event
+    event_id::String = generate_uuid4()
+    timestamp::String = nowstr()
+    message::Union{Nothing, NamedTuple} = nothing
+    exception::Union{Nothing, NamedTuple} = nothing
+    level::String
+    tags::Union{Nothing, Dict{String, String}} = nothing
+    attachments::Vector{Any} = []
+    transaction::Union{Nothing, Transaction} = nothing
+end
+
 
 ##############################
 # * Hub
 #----------------------------
 
 struct NoSamples end
+
 struct RatioSampler
     ratio::Float64
     function RatioSampler(x)
@@ -48,29 +48,28 @@ struct RatioSampler
     end
 end
 
+const Sampler = Union{NoSamples, RatioSampler}
+
 sample(::NoSamples) = false
 sample(sampler::RatioSampler) = rand() < sampler.ratio
 sample(sampler::Function) = sampler()
 
-const TaskPayload = Union{Event,Transaction}
-# This is to supposedly support the "unified api" of the sentry sdk. I'm not a
-# fan, so it will only go partway to this goal.
-# Note: a proper implementation here would make Hub a module.
-@AutoParm mutable struct Hub
-    initialised::Bool = false
-    traces_sampler = NoSamples()
+const TaskPayload = Union{Event, Transaction}
 
-    dsn = nothing
+Base.@kwdef mutable struct Hub
+    initialised::Bool = false
+    traces_sampler::Sampler = NoSamples()
+
+    dsn::Union{Nothing, String} = nothing
     upstream::String = ""
     project_id::String = ""
     public_key::String = ""
 
-    release::Union{Nothing,String} = nothing
-
+    release::Union{Nothing, String} = nothing
     debug::Bool = false
 
-    last_send_time = nothing
-    queued_tasks = Channel{TaskPayload}(100)
+    # last_send_time::Union{Nothing, String} = nothing
+    queued_tasks::Channel{TaskPayload} = Channel{TaskPayload}(100)
     sending_tasks::Dict{String, TaskPayload} = Dict()
-    sender_task = nothing
+    sender_task::Union{Nothing, Task} = nothing
 end
