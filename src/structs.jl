@@ -39,6 +39,7 @@ end
 #----------------------------
 
 struct NoSamples end
+
 struct RatioSampler
     ratio::Float64
     function RatioSampler(x)
@@ -55,9 +56,6 @@ sample(sampler::Function) = sampler()
 
 const TaskPayload = Union{Event, Transaction}
 
-# This is to supposedly support the "unified api" of the sentry sdk. I'm not a
-# fan, so it will only go partway to this goal.
-# Note: a proper implementation here would make Hub a module.
 Base.@kwdef mutable struct Hub
     initialised::Bool = false
     traces_sampler::Sampler = NoSamples()

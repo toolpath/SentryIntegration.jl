@@ -24,15 +24,15 @@ export capture_message,
 include("structs.jl")
 include("transactions.jl")
 
+
 ##############################
 # * Init
 #----------------------------
 
-
 const main_hub = Hub()
 const global_tags = Dict{String,String}()
 
-function init(dsn=nothing ; traces_sample_rate=nothing, traces_sampler=nothing, debug=false, release=nothing)
+function init(dsn=nothing; traces_sample_rate=nothing, traces_sampler=nothing, debug=false, release=nothing)
     main_hub.initialised && @warn "Sentry already initialised."
     if isnothing(dsn)
         dsn = get(ENV, "SENTRY_DSN", nothing)
@@ -84,10 +84,10 @@ function parse_dsn(dsn)
     return (; upstream, project_id=m[:project_id], public_key=m[:public_key])
 end
 
+
 ####################################################
 # * Globally applied things
 #--------------------------------------------------
-
 
 function set_tag(tag::String, data::String)
     if tag == "release"
@@ -95,6 +95,7 @@ function set_tag(tag::String, data::String)
     end
     global_tags[tag] = data
 end
+
 
 ##############################
 # * Utils

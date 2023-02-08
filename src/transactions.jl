@@ -13,8 +13,10 @@ function start_transaction(func; kwds...)
         return func(t)
     catch exc
         status = "internal_error"
-        if isnothing(t.parent_span)
-            capture_exception(exc; t.transaction)
+        if !(isnothing(t) || t isa InhibitTransaction) # equivalently: t isa NamedTuple
+            if isnothing(t.parent_span) # equivalently: t.span == t.transaction.root_span
+                capture_exception(exc; t.transaction)
+            end
         end
         rethrow()
     finally
@@ -45,12 +47,13 @@ end
 function finish_transaction(current, previous; status=nothing)
     finish_transaction(current; status)
     task_local_storage(:sentry_transaction, previous)
+    nothing
 end
 
-finish_transaction(::Nothing) = nothing
-finish_transaction(::InhibitTransaction) = nothing
+finish_transaction(::Nothing; _...) = nothing
+finish_transaction(::InhibitTransaction; _...) = nothing
 
-function finish_transaction((transaction, parent_span, span); status=nothing)
+function finish_transaction((; transaction, parent_span, span)::NamedTuple; status=nothing)
     if !isnothing(status)
         span.status = status
     end
@@ -63,6 +66,7 @@ function finish_transaction((transaction, parent_span, span); status=nothing)
     if transaction.num_open_spans == 0
         complete(transaction)
     end
+    nothing
 end
 
 
