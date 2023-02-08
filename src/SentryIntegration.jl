@@ -33,7 +33,7 @@ const main_hub = Hub()
 const global_tags = Dict{String,String}()
 
 function init(dsn=nothing; traces_sample_rate=nothing, traces_sampler=nothing, debug=false, release=nothing)
-    main_hub.initialised && @warn "Sentry already initialised."
+    main_hub.initialised && @warn "Sentry already initialised"
     if isnothing(dsn)
         dsn = get(ENV, "SENTRY_DSN", nothing)
         if isnothing(dsn)
@@ -91,7 +91,7 @@ end
 
 function set_tag(tag::String, data::String)
     if tag == "release"
-        @warn "A 'release' tag is ignored by sentry upstream. You should instead set the release in the `init` call"
+        @warn "A 'release' tag is ignored by Sentry; instead set the 'release' in the `init` call"
     end
     global_tags[tag] = data
 end
@@ -110,7 +110,7 @@ macro ignore_exception(ex)
         try
             $(esc(ex))
         catch exc
-            @error "Ignoring problem in sentry" exc
+            @error "Ignoring problem in Sentry" exc
         end
     end
 end
@@ -273,30 +273,32 @@ function send_envelope(task::TaskPayload)
     close(stream)
 
     if main_hub.dsn == "fake"
-        body = String(transcode(CodecZlib.GzipDecompressor, body))
-        lines = map(eachline(IOBuffer(body))) do line
-            line = JSON.Parser.parse(line)
-            line = JSON.json(line, 4)
+        if main_hub.debug
+            body = String(transcode(CodecZlib.GzipDecompressor, body))
+            lines = map(eachline(IOBuffer(body))) do line
+                line = JSON.Parser.parse(line)
+                line = JSON.json(line, 4)
+            end
+            @info "Sentry: Would have sent event $(task.event_id):"
+            foreach(println, lines)
         end
-        @info "Would have sent event $(task.event_id)"
-        foreach(println, lines)
         sleep(0.5)
         return
     end
 
     if main_hub.debug
-        @info "Sending HTTP request for $(typeof(task))..."
+        @info "Sentry: Sending HTTP request for $(task.event_id)..."
     end
     r = HTTP.request("POST", target, headers, body)
     if main_hub.debug
-        @info "Received response for $(typeof(task)); status = $(r.status)"
+        @info "Sentry: Received HTTP response for $(task.event_id); status = $(r.status)"
     end
     if r.status == 429
         # TODO
         @warn "Sentry: Too Many Requests"
     elseif r.status != 200
         # TODO
-        @warn "Received error status = $(r.status)"
+        @warn "Sentry: Received HTTP error = $(r.status)"
     end
     nothing
 end
@@ -310,7 +312,7 @@ function send_worker()
             send_envelope(event)
         catch ex
             if main_hub.debug
-                @error "Error sending Sentry event"
+                @error "Sentry: Error sending event $(event.event_id)"
                 showerror(stderr, ex, catch_backtrace())
             end
         finally
@@ -321,7 +323,7 @@ end
 
 function clear_queue()
     while isready(main_hub.queued_tasks) || !isempty(main_hub.sending_tasks)
-        @info "Waiting for queue to finish before closing"
+        @info "Sentry: Waiting for queue to finish before closing..."
         sleep(1.0)
     end
 end
