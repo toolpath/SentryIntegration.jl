@@ -129,7 +129,6 @@ function Base.show(io::IO, ::MIME"text/plain", t::Transaction)
         ", ", t.root_span.status,
         ")",
     )
-    # print_node(io, get_span_tree(t), 1)
     for node in get_span_tree(t).sub_nodes
         print_node(io, node, 1)
     end
