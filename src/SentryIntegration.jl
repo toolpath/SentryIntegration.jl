@@ -10,7 +10,8 @@ using CodecZlib
 
 const VERSION = @PkgVersion.Version 0
 
-export capture_message,
+export
+    capture_message,
     capture_exception,
     start_transaction,
     finish_transaction,
@@ -234,6 +235,7 @@ function prepare_body(transaction::Transaction, buf)
         server_name = gethostname(),
         transaction.event_id,
         transaction = transaction.name,
+        main_hub.release,
         # root_span...,
         root_span.start_timestamp,
         root_span.timestamp,
