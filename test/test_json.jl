@@ -1,3 +1,5 @@
+module TestJSON
+
 using Test
 using JSON3
 using Dates
@@ -58,3 +60,5 @@ SentryIntegration.init("fake", debug=false, traces_sample_rate=1.0)
         @test json["level"] == "error"
     end
 end
+
+end # module

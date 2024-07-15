@@ -7,6 +7,7 @@ using HTTP
 using JSON
 using PkgVersion
 using CodecZlib
+using Printf
 
 const VERSION = @PkgVersion.Version 0
 
@@ -122,10 +123,7 @@ end
 #------------------------------
 
 function generate_uuid4()
-    # This is mostly just printing the UUID4 in the format we want.
-    val = uuid4().value
-    s = string(val, base=16)
-    lpad(s, 32, '0')
+    @sprintf("%032x", uuid4().value)
 end
 
 filter_nothings(thing) = filter(x -> !isnothing(x.second), pairs(thing))
