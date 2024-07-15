@@ -7,7 +7,7 @@ using Dates
 using SentryIntegration
 using SentryIntegration: Event, prepare_body
 
-SentryIntegration.init("fake", debug=false, traces_sample_rate=1.0)
+SentryIntegration.init("fake"; debug = false, traces_sample_rate = 1.0)
 
 @testset "Event (error)" begin
     event_time = now(UTC)
@@ -35,7 +35,7 @@ SentryIntegration.init("fake", debug=false, traces_sample_rate=1.0)
 
     io = IOBuffer()
     prepare_body(event, io)
-    data = JSON3.read(String(take!(io)); jsonlines=true)
+    data = JSON3.read(String(take!(io)); jsonlines = true)
     iso_utc = dateformat"yyyy-mm-ddTHH:MM:SS.sZ"
 
     @test length(data) == 3

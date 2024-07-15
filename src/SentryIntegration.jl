@@ -11,8 +11,7 @@ using Printf
 
 const VERSION::VersionNumber = Pkg.project().version
 
-export
-    capture_message,
+export capture_message,
     capture_exception,
     start_transaction,
     finish_transaction,
@@ -22,10 +21,8 @@ export
     Warn,
     Error
 
-
 include("structs.jl")
 include("transactions.jl")
-
 
 ##############################
 # * Init
@@ -34,7 +31,13 @@ include("transactions.jl")
 const main_hub = Hub()
 const global_tags = Dict{String,String}()
 
-function init(dsn=nothing; traces_sample_rate=nothing, traces_sampler=nothing, debug=false, release=nothing)
+function init(
+    dsn = nothing;
+    traces_sample_rate = nothing,
+    traces_sampler = nothing,
+    debug = false,
+    release = nothing,
+)
     main_hub.initialised && @warn "Sentry already initialised"
     if isnothing(dsn)
         dsn = get(ENV, "SENTRY_DSN", nothing)
@@ -76,16 +79,18 @@ function init(dsn=nothing; traces_sample_rate=nothing, traces_sampler=nothing, d
 end
 
 function parse_dsn(dsn)
-    dsn == "fake" && return (; upstream="", project_id="", public_key="")
+    dsn == "fake" && return (; upstream = "", project_id = "", public_key = "")
 
-    m = match(r"(?'protocol'\w+)://(?'public_key'\w+)@(?'hostname'[\w\.]+(?::\d+)?)/(?'project_id'\w+)"a, dsn)
+    m = match(
+        r"(?'protocol'\w+)://(?'public_key'\w+)@(?'hostname'[\w\.]+(?::\d+)?)/(?'project_id'\w+)"a,
+        dsn,
+    )
     isnothing(m) && error("dsn does not fit correct format")
 
     upstream = "$(m[:protocol])://$(m[:hostname])"
 
-    return (; upstream, project_id=m[:project_id], public_key=m[:public_key])
+    return (; upstream, project_id = m[:project_id], public_key = m[:public_key])
 end
-
 
 ####################################################
 # * Globally applied things
@@ -97,7 +102,6 @@ function set_tag(tag::String, data::String)
     end
     global_tags[tag] = data
 end
-
 
 ##############################
 # * Utils
@@ -116,7 +120,6 @@ macro ignore_exception(ex)
         end
     end
 end
-
 
 ################################
 # * Communication
@@ -138,22 +141,18 @@ end
 
 function trace_context(transaction::Transaction)
     root_span = transaction.root_span
-    (;
+    filter_nothings((;
         transaction.trace_id,
         root_span.op,
         root_span.description,
         root_span.span_id,
         root_span.parent_span_id,
         root_span.status,
-    ) |> filter_nothings
+    ))
 end
 
 function prepare_body(event::Event, buf)
-    envelope_header = (;
-        event.event_id,
-        sent_at = nowstr(),
-        dsn = main_hub.dsn
-    )
+    envelope_header = (; event.event_id, sent_at = nowstr(), dsn = main_hub.dsn)
 
     transaction, transaction_tags, trace = if isnothing(event.transaction)
         nothing, nothing, nothing
@@ -162,7 +161,7 @@ function prepare_body(event::Event, buf)
         transaction.name, transaction.root_span.tags, trace_context(transaction)
     end
 
-    item = (;
+    item = filter_nothings((;
         event.timestamp,
         platform = "julia",
         server_name = gethostname(),
@@ -172,22 +171,19 @@ function prepare_body(event::Event, buf)
         transaction,
         main_hub.release,
         tags = merge_tags(global_tags, event.tags, transaction_tags),
-        contexts = (; trace) |> filter_nothings,
-    ) |> filter_nothings
+        contexts = filter_nothings((; trace)),
+    ))
 
     item_str = JSON.json(item)
-    item_header = (;
-        type = "event",
-        content_type = "application/json",
-        length = sizeof(item_str),
-    )
+    item_header =
+        (; type = "event", content_type = "application/json", length = sizeof(item_str))
 
     println(buf, JSON.json(envelope_header))
     println(buf, JSON.json(item_header))
     println(buf, item_str)
 
     for attachment in event.attachments
-        attachment_str = JSON.json((; data=attachment))
+        attachment_str = JSON.json((; data = attachment))
         attachment_header = (;
             type = "attachment",
             length = sizeof(attachment_str),
@@ -201,18 +197,14 @@ function prepare_body(event::Event, buf)
 end
 
 function prepare_body(transaction::Transaction, buf)
-    envelope_header = (;
-        transaction.event_id,
-        sent_at = nowstr(),
-        dsn = main_hub.dsn,
-    )
+    envelope_header = (; transaction.event_id, sent_at = nowstr(), dsn = main_hub.dsn)
 
     if main_hub.debug && any(span -> isnothing(span.timestamp), transaction.spans)
         @warn "At least one span didn't complete before the transaction completed"
     end
 
     spans = map(transaction.spans) do span
-        (;
+        filter_nothings((;
             transaction.trace_id,
             span.parent_span_id,
             span.span_id,
@@ -222,12 +214,12 @@ function prepare_body(transaction::Transaction, buf)
             span.start_timestamp,
             span.timestamp,
             span.status,
-        ) |> filter_nothings
+        ))
     end
 
     root_span = transaction.root_span
 
-    item = (;
+    item = filter_nothings((;
         type = "transaction",
         platform = "julia",
         server_name = gethostname(),
@@ -240,7 +232,7 @@ function prepare_body(transaction::Transaction, buf)
         tags = merge_tags(global_tags, root_span.tags),
         contexts = (; trace = trace_context(transaction)),
         spans,
-    ) |> filter_nothings
+    ))
 
     item_str = JSON.json(item)
     item_header = (;
@@ -328,7 +320,6 @@ function clear_queue()
     end
 end
 
-
 ####################################
 # * Basic capturing
 #----------------------------------
@@ -339,58 +330,54 @@ function capture_event(task::TaskPayload)
     put!(main_hub.queued_tasks, task)
 end
 
-function capture_message(message, level::LogLevel=Info ; kwds...)
+function capture_message(message, level::LogLevel = Info; kwds...)
     level_str = if level == Warn
         "warning"
     else
         lowercase(string(level))
     end
-    capture_message(message, level_str ; kwds...)
+    capture_message(message, level_str; kwds...)
 end
 
-function capture_message(message, level::String ; tags=nothing, attachments::Vector=[])
+function capture_message(message, level::String; tags = nothing, attachments::Vector = [])
     main_hub.initialised || return
 
-    capture_event(Event(;
-        message = (; formatted=message),
-        level,
-        attachments,
-        tags,
-    ))
+    capture_event(Event(; message = (; formatted = message), level, attachments, tags))
 end
 
 # This assumes that we are calling from within a catch
-function capture_exception(exc::Exception; tags=nothing, transaction=nothing)
+function capture_exception(exc::Exception; tags = nothing, transaction = nothing)
     capture_exception([(exc, catch_backtrace())]; tags, transaction)
 end
 
-function capture_exception(exceptions=current_exceptions(); tags=nothing, transaction=nothing)
+function capture_exception(
+    exceptions = current_exceptions();
+    tags = nothing,
+    transaction = nothing,
+)
     main_hub.initialised || return
 
     formatted_excs = map(exceptions) do (exc, strace)
         bt = Base.scrub_repl_backtrace(strace)
         frames = map(bt) do frame
-            Dict(
-                :filename => frame.file,
-                :function => frame.func,
-                :lineno => frame.line,
-            )
+            Dict(:filename => frame.file, :function => frame.func, :lineno => frame.line)
         end
 
         Dict(
             :type => typeof(exc).name.name,
             :module => string(typeof(exc).name.module),
             :value => hasproperty(exc, :msg) ? exc.msg : sprint(showerror, exc),
-            :stacktrace => (; frames=reverse(frames)),
+            :stacktrace => (; frames = reverse(frames)),
         )
     end
-    capture_event(Event(;
-        exception = (; values=formatted_excs),
-        level = "error",
-        tags,
-        transaction,
-    ))
+    capture_event(
+        Event(;
+            exception = (; values = formatted_excs),
+            level = "error",
+            tags,
+            transaction,
+        ),
+    )
 end
-
 
 end # module

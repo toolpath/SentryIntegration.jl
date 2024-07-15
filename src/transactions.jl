@@ -24,7 +24,12 @@ function start_transaction(func; kwds...)
     end
 end
 
-function start_transaction(; name="", force_new=!isempty(name), trace_id=:auto, span_kwds...)
+function start_transaction(;
+    name = "",
+    force_new = !isempty(name),
+    trace_id = :auto,
+    span_kwds...,
+)
     # Need to pass through nothings so that we can hit an InhibitTransaction
     t = get_transaction(; name, trace_id, force_new)
     if isnothing(t) || t isa InhibitTransaction
@@ -45,7 +50,7 @@ function start_transaction(; name="", force_new=!isempty(name), trace_id=:auto, 
     (; transaction, parent_span, span)
 end
 
-function finish_transaction(current, previous; status=nothing)
+function finish_transaction(current, previous; status = nothing)
     finish_transaction(current; status)
     task_local_storage(:sentry_transaction, previous)
     nothing
@@ -54,7 +59,10 @@ end
 finish_transaction(::Nothing; _...) = nothing
 finish_transaction(::InhibitTransaction; _...) = nothing
 
-function finish_transaction((; transaction, parent_span, span)::NamedTuple; status=nothing)
+function finish_transaction(
+    (; transaction, parent_span, span)::NamedTuple;
+    status = nothing,
+)
     if !isnothing(status)
         span.status = status
     end
@@ -70,8 +78,7 @@ function finish_transaction((; transaction, parent_span, span)::NamedTuple; stat
     nothing
 end
 
-
-function get_transaction(; force_new=false, trace_id=:auto, kwds...)
+function get_transaction(; force_new = false, trace_id = :auto, kwds...)
     main_hub.initialised || return nothing
 
     if force_new
@@ -103,17 +110,18 @@ function get_transaction(; force_new=false, trace_id=:auto, kwds...)
         # later undo its effects once the outermost transaction is completed
         # (meaning the InhibitTransaction itself should mimic a transaction).
         task_local_storage(:sentry_transaction, transaction)
-        return (; transaction, parent_span=nothing)
+        return (; transaction, parent_span = nothing)
     else
         transaction::Transaction
         if trace_id != :auto
-            transaction.trace_id != trace_id && main_hub.debug && @warn "Trying to start a transaction with a new trace id, inside of an old transaction"
+            transaction.trace_id != trace_id &&
+                main_hub.debug &&
+                @warn "Trying to start a transaction with a new trace id, inside of an old transaction"
         end
         parent_span = task_local_storage(:sentry_parent_span)::Span
         return (; transaction, parent_span)
     end
 end
-
 
 set_task_transaction(::Nothing) = nothing
 
@@ -126,7 +134,6 @@ function set_task_transaction((; transaction, span)::NamedTuple)
     task_local_storage(:sentry_parent_span, span)
     nothing
 end
-
 
 function complete(transaction::Transaction)
     main_hub.initialised || error("Can't get here without sentry being initialised")
