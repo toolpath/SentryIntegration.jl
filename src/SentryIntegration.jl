@@ -5,11 +5,11 @@ using UUIDs
 using Dates
 using HTTP
 using JSON
-using PkgVersion
+using Pkg
 using CodecZlib
 using Printf
 
-const VERSION = @PkgVersion.Version 0
+const VERSION::VersionNumber = Pkg.project().version
 
 export
     capture_message,
