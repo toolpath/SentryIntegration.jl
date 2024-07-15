@@ -5,8 +5,8 @@
 struct InhibitTransaction end
 
 function start_transaction(func; kwds...)
-    previous = get(task_local_storage(), :sentry_transaction, nothing)
-    t = start_transaction(; kwds...)
+    previous = get(task_local_storage(), :sentry_transaction, nothing) # current transaction
+    t = start_transaction(; kwds...) # new span
 
     status = nothing
     try
@@ -36,6 +36,7 @@ function start_transaction(; name="", force_new=!isempty(name), trace_id=:auto, 
     parent_span_id = !isnothing(parent_span) ? parent_span.span_id : nothing
     span = Span(; parent_span_id, span_kwds...)
     task_local_storage(:sentry_parent_span, span)
+    # TODO set this on construction
     if isnothing(transaction.root_span)
         transaction.root_span = span
     end
@@ -120,9 +121,9 @@ function set_task_transaction(::InhibitTransaction)
     task_local_storage(:sentry_transaction, InhibitTransaction())
 end
 
-function set_task_transaction((transaction, ignored, parent_span))
+function set_task_transaction((; transaction, span)::NamedTuple)
     task_local_storage(:sentry_transaction, transaction)
-    task_local_storage(:sentry_parent_span, parent_span)
+    task_local_storage(:sentry_parent_span, span)
     nothing
 end
 
@@ -133,6 +134,7 @@ function complete(transaction::Transaction)
     nothing
 end
 
+# mutating
 function complete(span::Span)
     if !isnothing(span.timestamp)
         main_hub.debug && @warn "Span attempted to be completed twice"
