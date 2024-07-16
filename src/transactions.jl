@@ -56,8 +56,13 @@ function finish_transaction(current, previous; status = nothing)
     nothing
 end
 
-finish_transaction(::Nothing; _...) = nothing
-finish_transaction(::InhibitTransaction; _...) = nothing
+function finish_transaction(::Nothing; _...)
+    nothing
+end
+
+function finish_transaction(::InhibitTransaction; _...)
+    nothing
+end
 
 function finish_transaction(
     (; transaction, parent_span, span)::NamedTuple;
@@ -123,7 +128,9 @@ function get_transaction(; force_new = false, trace_id = :auto, kwds...)
     end
 end
 
-set_task_transaction(::Nothing) = nothing
+function set_task_transaction(::Nothing)
+    nothing
+end
 
 function set_task_transaction(::InhibitTransaction)
     task_local_storage(:sentry_transaction, InhibitTransaction())

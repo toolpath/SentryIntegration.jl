@@ -108,7 +108,9 @@ end
 #----------------------------
 
 # Need to have an extra Z at the end - this indicates UTC
-nowstr() = string(now(UTC)) * "Z"
+function nowstr()
+    string(now(UTC)) * "Z"
+end
 
 # Useful util
 macro ignore_exception(ex)
@@ -129,7 +131,9 @@ function generate_uuid4()
     @sprintf("%032x", uuid4().value)
 end
 
-filter_nothings(thing) = filter(x -> !isnothing(x.second), pairs(thing))
+function filter_nothings(thing)
+    filter(x -> !isnothing(x.second), pairs(thing))
+end
 
 function merge_tags(args...)
     args = filter(!=(nothing), args)

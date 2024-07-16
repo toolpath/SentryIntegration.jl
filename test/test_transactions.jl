@@ -7,8 +7,13 @@ using SentryIntegration: Span, Transaction, get_span_tree
 
 SentryIntegration.init("fake"; debug = true, traces_sample_rate = 1.0)
 
-span_key(span) = (span.op, span.description)
-span_keys(node) = (span_key(node.span), map(span_keys, node.sub_nodes))
+function span_key(span)
+    (span.op, span.description)
+end
+
+function span_keys(node)
+    (span_key(node.span), map(span_keys, node.sub_nodes))
+end
 
 @testset "one task, flat spans (serial execution)" begin
     expected = (("root_span", "0"), [(("span1", "1"), []), (("span2", "2"), [])])

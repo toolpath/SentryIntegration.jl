@@ -45,9 +45,17 @@ end
 
 const Sampler = Union{NoSamples,RatioSampler}
 
-sample(::NoSamples) = false
-sample(sampler::RatioSampler) = rand() < sampler.ratio
-sample(sampler::Function) = sampler()
+function sample(::NoSamples)
+    false
+end
+
+function sample(sampler::RatioSampler)
+    rand() < sampler.ratio
+end
+
+function sample(sampler::Function)
+    sampler()
+end
 
 const TaskPayload = Union{Event,Transaction}
 
@@ -92,7 +100,9 @@ end
 
 # show
 
-print_indent(io, l, args...) = println(io, repeat(" ", 2 * l), args...)
+function print_indent(io, l, args...)
+    println(io, repeat(" ", 2 * l), args...)
+end
 
 function print_node(io, node, l = 0)
     (; span, sub_nodes) = node
