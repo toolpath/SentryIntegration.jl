@@ -1,7 +1,7 @@
 name = "SentryIntegration"
 uuid = "0c0dc41a-7892-49ef-a372-46007ef8f0a8"
 authors = ["Daniel Cocks <daniel.cocks@gmail.com>"]
-version = "0.6.2"
+version = "0.7.0"
 
 [deps]
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
