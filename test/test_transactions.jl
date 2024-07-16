@@ -3,9 +3,9 @@ module TestTransactions
 using Test
 
 using SentryIntegration
-import SentryIntegration: Span, Transaction, get_span_tree
+using SentryIntegration: Span, Transaction, get_span_tree
 
-SentryIntegration.init("fake"; debug = false, traces_sample_rate = 1.0)
+SentryIntegration.init("fake"; debug = true, traces_sample_rate = 1.0)
 
 span_key(span) = (span.op, span.description)
 span_keys(node) = (span_key(node.span), map(span_keys, node.sub_nodes))
@@ -101,6 +101,8 @@ end
                 @async t1 = start_transaction(; op = "span1", description = "1")
                 @async t2 = start_transaction(; op = "span2", description = "2")
             end
+            finish_transaction(t1)
+            finish_transaction(t2)
             t, t1, t2
         end
 
@@ -116,7 +118,7 @@ end
             perform_sub_op("1")
             perform_sub_op("2")
             if description == "recurse"
-                @sync @async async_op(t2, "final")
+                @sync (@async async_op(t2, "final"))
             end
         end
     end
@@ -130,10 +132,10 @@ end
     function async_nested(; end_early = false)
         start_transaction(; name = "transaction", op = "root_span") do t
             @sync begin
+                end_early && finish_transaction(t)
                 @async async_op(t, "1")
                 @async async_op(t, "2")
                 @async async_op(t, "recurse")
-                end_early && finish_transaction(t)
             end
             t
         end
