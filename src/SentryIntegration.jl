@@ -9,7 +9,13 @@ using Pkg
 using CodecZlib
 using Printf
 
-const VERSION::VersionNumber = Pkg.project().version
+function get_version()
+    project_toml = joinpath(pkgdir(SentryIntegration), "Project.toml")
+    project = Pkg.Types.read_project(project_toml)
+    project.version
+end
+
+const VERSION::VersionNumber = get_version()
 
 export capture_message,
     capture_exception,
