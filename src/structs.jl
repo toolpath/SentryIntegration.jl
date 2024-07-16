@@ -2,12 +2,12 @@
 
 Base.@kwdef mutable struct Span
     span_id::String = generate_uuid4()[1:16]
-    parent_span_id::Union{Nothing, String} = nothing
-    tags::Union{Nothing, Dict{String, String}} = nothing
-    op::Union{Nothing, String} = nothing
-    description::Union{Nothing, String} = nothing
+    parent_span_id::Union{Nothing,String} = nothing
+    tags::Union{Nothing,Dict{String,String}} = nothing
+    op::Union{Nothing,String} = nothing
+    description::Union{Nothing,String} = nothing
     start_timestamp::String = nowstr()
-    timestamp::Union{Nothing, String} = nothing
+    timestamp::Union{Nothing,String} = nothing
     status::String = "ok"
 end
 
@@ -16,21 +16,20 @@ Base.@kwdef mutable struct Transaction
     trace_id::String
     name::String
     spans::Vector{Span} = []
-    root_span::Union{Nothing, Span} = nothing
+    root_span::Union{Nothing,Span} = nothing
     num_open_spans::Int = 0
 end
 
 Base.@kwdef struct Event
     event_id::String = generate_uuid4()
     timestamp::String = nowstr()
-    message::Union{Nothing, NamedTuple} = nothing
-    exception::Union{Nothing, NamedTuple} = nothing
+    message::Union{Nothing,NamedTuple} = nothing
+    exception::Union{Nothing,NamedTuple} = nothing
     level::String
-    tags::Union{Nothing, Dict{String, String}} = nothing
+    tags::Union{Nothing,Dict{String,String}} = nothing
     attachments::Vector{Any} = []
-    transaction::Union{Nothing, Transaction} = nothing
+    transaction::Union{Nothing,Transaction} = nothing
 end
-
 
 # main hub
 
@@ -44,32 +43,39 @@ struct RatioSampler
     end
 end
 
-const Sampler = Union{NoSamples, RatioSampler}
+const Sampler = Union{NoSamples,RatioSampler}
 
-sample(::NoSamples) = false
-sample(sampler::RatioSampler) = rand() < sampler.ratio
-sample(sampler::Function) = sampler()
+function sample(::NoSamples)
+    false
+end
 
-const TaskPayload = Union{Event, Transaction}
+function sample(sampler::RatioSampler)
+    rand() < sampler.ratio
+end
+
+function sample(sampler::Function)
+    sampler()
+end
+
+const TaskPayload = Union{Event,Transaction}
 
 Base.@kwdef mutable struct Hub
     initialised::Bool = false
     traces_sampler::Sampler = NoSamples()
 
-    dsn::Union{Nothing, String} = nothing
+    dsn::Union{Nothing,String} = nothing
     upstream::String = ""
     project_id::String = ""
     public_key::String = ""
 
-    release::Union{Nothing, String} = nothing
+    release::Union{Nothing,String} = nothing
     debug::Bool = false
 
     # last_send_time::Union{Nothing, String} = nothing
     queued_tasks::Channel{TaskPayload} = Channel{TaskPayload}(100)
-    sending_tasks::Dict{String, TaskPayload} = Dict()
-    sender_task::Union{Nothing, Task} = nothing
+    sending_tasks::Dict{String,TaskPayload} = Dict()
+    sender_task::Union{Nothing,Task} = nothing
 end
-
 
 # helper functions
 
@@ -88,16 +94,17 @@ function descendants(span, children_lookup)
     else
         []
     end
-    sort!(sub_nodes, by=(node -> node.span.start_timestamp))
+    sort!(sub_nodes; by = (node -> node.span.start_timestamp))
     (; span, sub_nodes)
 end
 
-
 # show
 
-print_indent(io, l, args...) = println(io, repeat(" ", 2 * l), args...)
+function print_indent(io, l, args...)
+    println(io, repeat(" ", 2 * l), args...)
+end
 
-function print_node(io, node, l=0)
+function print_node(io, node, l = 0)
     (; span, sub_nodes) = node
     print_indent(io, l, "", span.op, " - ", something(span.description, span.span_id))
     for sub_node in sub_nodes
@@ -106,27 +113,33 @@ function print_node(io, node, l=0)
 end
 
 function Base.show(io::IO, s::Span)
-    print(io,
-        "Span(", s.op,
-        ", ", something(s.description, s.span_id),
-        ")",
-    )
+    print(io, "Span(", s.op, ", ", something(s.description, s.span_id), ")")
 end
 
 function Base.show(io::IO, t::Transaction)
-    print(io,
-        "Transaction(", t.name,
-        ", ", length(t.spans), " spans",
-        ", ", t.root_span.status,
+    print(
+        io,
+        "Transaction(",
+        t.name,
+        ", ",
+        length(t.spans),
+        " spans",
+        ", ",
+        t.root_span.status,
         ")",
     )
 end
 
 function Base.show(io::IO, ::MIME"text/plain", t::Transaction)
-    println(io,
-        "Transaction: ", t.name,
-        " (", length(t.spans), " spans",
-        ", ", t.root_span.status,
+    println(
+        io,
+        "Transaction: ",
+        t.name,
+        " (",
+        length(t.spans),
+        " spans",
+        ", ",
+        t.root_span.status,
         ")",
     )
     for node in get_span_tree(t).sub_nodes
