@@ -4,7 +4,7 @@ using Logging: Info, Warn, Error, LogLevel
 using UUIDs
 using Dates
 using HTTP
-using JSON
+using JSON3
 using Pkg
 using CodecZlib
 using Printf
@@ -174,22 +174,22 @@ function prepare_body(event::Event, buf)
         contexts = filter_nothings((; trace)),
     ))
 
-    item_str = JSON.json(item)
+    item_json = JSON3.write(item)
     item_header =
-        (; type = "event", content_type = "application/json", length = sizeof(item_str))
+        (; type = "event", content_type = "application/json", length = sizeof(item_json))
 
-    println(buf, JSON.json(envelope_header))
-    println(buf, JSON.json(item_header))
-    println(buf, item_str)
+    println(buf, JSON3.write(envelope_header))
+    println(buf, JSON3.write(item_header))
+    println(buf, item_json)
 
     for attachment in event.attachments
-        attachment_str = JSON.json((; data = attachment))
+        attachment_str = JSON3.write((; data = attachment))
         attachment_header = (;
             type = "attachment",
             length = sizeof(attachment_str),
             content_type = "application/json",
         )
-        println(buf, JSON.json(attachment_header))
+        JSON3.write(buf, attachment_header)
         println(buf, attachment_str)
     end
 
@@ -234,16 +234,16 @@ function prepare_body(transaction::Transaction, buf)
         spans,
     ))
 
-    item_str = JSON.json(item)
+    item_json = JSON3.write(item)
     item_header = (;
         type = "transaction",
         content_type = "application/json",
-        length = sizeof(item_str),
+        length = sizeof(item_json),
     )
 
-    println(buf, JSON.json(envelope_header))
-    println(buf, JSON.json(item_header))
-    println(buf, item_str)
+    println(buf, JSON3.write(envelope_header))
+    println(buf, JSON3.write(item_header))
+    println(buf, item_json)
     nothing
 end
 
@@ -267,12 +267,13 @@ function send_envelope(task::TaskPayload)
     if main_hub.dsn == "fake"
         if main_hub.debug
             body = String(transcode(CodecZlib.GzipDecompressor, body))
-            lines = map(eachline(IOBuffer(body))) do line
-                line = JSON.Parser.parse(line)
-                line = JSON.json(line, 4)
-            end
             @info "Sentry: Would have sent event $(task.event_id):"
-            foreach(println, lines)
+            blocks = JSON3.read(body; jsonlines = true)
+            for block in blocks
+                io = IOBuffer()
+                JSON3.pretty(io, block)
+                println(String(take!(io)))
+            end
         end
         sleep(0.5)
         return
