@@ -5,7 +5,7 @@ using Test
 using SentryIntegration
 using SentryIntegration: Span, Transaction, get_span_tree
 
-SentryIntegration.init("fake"; debug = true, traces_sample_rate = 1.0)
+SentryIntegration.init("fake"; debug = false, traces_sample_rate = 1.0)
 
 function span_key(span)
     (span.op, span.description)
