@@ -79,10 +79,23 @@ end
 
 # helper functions
 
+function unix_time(timestamp::String)
+    datetime2unix(DateTime(timestamp[1:23])) # exclude Z
+end
+
+function unix_time(::Nothing)
+    datetime2unix(now(UTC))
+end
+
+function get_duration_seconds(span::Span)
+    s = unix_time(span.timestamp) - unix_time(span.start_timestamp)
+    round(s; digits = 3)
+end
+
 function get_span_tree(t::Transaction)
-    children_lookup = Dict()
+    children_lookup = Dict{Union{Nothing,String},Vector{Span}}()
     for span in t.spans
-        push!(get!(children_lookup, span.parent_span_id, []), span)
+        push!(get!(children_lookup, span.parent_span_id, Span[]), span)
     end
     descendants(t.root_span, children_lookup)
 end
@@ -106,42 +119,30 @@ end
 
 function print_node(io, node, l = 0)
     (; span, sub_nodes) = node
-    print_indent(io, l, "", span.op, " - ", something(span.description, span.span_id))
+    desc = something(span.description, span.span_id)
+    s = get_duration_seconds(span)
+    str = "$(span.op) - $desc, $s s"
+    print_indent(io, l, str)
     for sub_node in sub_nodes
         print_node(io, sub_node, l + 1)
     end
 end
 
-function Base.show(io::IO, s::Span)
-    print(io, "Span(", s.op, ", ", something(s.description, s.span_id), ")")
+function Base.show(io::IO, span::Span)
+    desc = something(span.description, span.span_id)
+    s = get_duration_seconds(span)
+    print(io, "Span($(span.op) - $desc, $s s)")
 end
 
 function Base.show(io::IO, t::Transaction)
-    print(
-        io,
-        "Transaction(",
-        t.name,
-        ", ",
-        length(t.spans),
-        " spans",
-        ", ",
-        t.root_span.status,
-        ")",
-    )
+    n = length(t.spans)
+    s = get_duration_seconds(t.root_span)
+    status = t.root_span.status
+    print(io, "Transaction(\"$(t.name)\", $n spans, $s s, $status)")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", t::Transaction)
-    println(
-        io,
-        "Transaction: ",
-        t.name,
-        " (",
-        length(t.spans),
-        " spans",
-        ", ",
-        t.root_span.status,
-        ")",
-    )
+    println(io, t)
     for node in get_span_tree(t).sub_nodes
         print_node(io, node, 1)
     end
