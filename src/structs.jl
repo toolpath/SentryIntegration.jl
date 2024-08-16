@@ -6,7 +6,7 @@ Base.@kwdef mutable struct Span
     tags::Union{Nothing,Dict{String,String}} = nothing
     op::Union{Nothing,String} = nothing
     description::Union{Nothing,String} = nothing
-    start_timestamp::String = nowstr()
+    start_timestamp::String = now_timestamp()
     timestamp::Union{Nothing,String} = nothing
     status::String = "ok"
 end
@@ -22,7 +22,7 @@ end
 
 Base.@kwdef struct Event
     event_id::String = generate_uuid4()
-    timestamp::String = nowstr()
+    timestamp::String = now_timestamp()
     message::Union{Nothing,NamedTuple} = nothing
     exception::Union{Nothing,NamedTuple} = nothing
     level::String
