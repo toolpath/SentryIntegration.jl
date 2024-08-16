@@ -153,7 +153,7 @@ function complete(span::Span)
     if !isnothing(span.timestamp)
         main_hub.debug && @warn "Span attempted to be completed twice"
     else
-        span.timestamp = nowstr()
+        span.timestamp = now_timestamp()
     end
     nothing
 end

@@ -113,9 +113,10 @@ end
 # * Utils
 #----------------------------
 
-# Need to have an extra Z at the end - this indicates UTC
-function nowstr()
-    string(now(UTC)) * "Z"
+ISODateTimeFormatUTC = dateformat"yyyy-mm-dd\THH:MM:SS.sss\Z"
+
+function now_timestamp()
+    Dates.format(now(UTC), ISODateTimeFormatUTC)
 end
 
 # Useful util
@@ -162,7 +163,7 @@ function trace_context(transaction::Transaction)
 end
 
 function prepare_body(event::Event, buf)
-    envelope_header = (; event.event_id, sent_at = nowstr(), dsn = main_hub.dsn)
+    envelope_header = (; event.event_id, sent_at = now_timestamp(), dsn = main_hub.dsn)
 
     transaction, transaction_tags, trace = if isnothing(event.transaction)
         nothing, nothing, nothing
@@ -207,7 +208,8 @@ function prepare_body(event::Event, buf)
 end
 
 function prepare_body(transaction::Transaction, buf)
-    envelope_header = (; transaction.event_id, sent_at = nowstr(), dsn = main_hub.dsn)
+    envelope_header =
+        (; transaction.event_id, sent_at = now_timestamp(), dsn = main_hub.dsn)
 
     if main_hub.debug && any(span -> isnothing(span.timestamp), transaction.spans)
         @warn "At least one span didn't complete before the transaction completed"
@@ -265,7 +267,7 @@ function send_envelope(task::TaskPayload)
         "Content-Type" => "application/x-sentry-envelope",
         "content-encoding" => "gzip",
         "User-Agent" => "SentryIntegration.jl/$VERSION",
-        "X-Sentry-Auth" => "Sentry sentry_version=7, sentry_client=SentryIntegration.jl/$VERSION, sentry_timestamp=$(nowstr()), sentry_key=$(main_hub.public_key)",
+        "X-Sentry-Auth" => "Sentry sentry_version=7, sentry_client=SentryIntegration.jl/$VERSION, sentry_timestamp=$(now_timestamp()), sentry_key=$(main_hub.public_key)",
     ]
 
     buf = PipeBuffer()
