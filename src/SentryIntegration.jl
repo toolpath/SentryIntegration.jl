@@ -208,7 +208,8 @@ function prepare_body(event::Event, buf)
 end
 
 function prepare_body(transaction::Transaction, buf)
-    envelope_header = (; transaction.event_id, sent_at = now_timestamp(), dsn = main_hub.dsn)
+    envelope_header =
+        (; transaction.event_id, sent_at = now_timestamp(), dsn = main_hub.dsn)
 
     if main_hub.debug && any(span -> isnothing(span.timestamp), transaction.spans)
         @warn "At least one span didn't complete before the transaction completed"
